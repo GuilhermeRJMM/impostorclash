@@ -4,17 +4,16 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+// Adicionando CORS para garantir que ninguém seja bloqueado pela rede
+const io = new Server(server, { cors: { origin: "*" } });
 
-// Aqui é onde ele procura a pasta public. Ela precisa existir!
 app.use(express.static('public'));
 
 let cartasClash = [];
 let jogadores = [];
 let indexImpostorGeral = -1;
-let votos = {}; // Armazena quem votou em quem
+let votos = {};
 
-// Busca as cartas da RoyaleAPI
 async function carregarCartas() {
     try {
         const response = await fetch('https://royaleapi.github.io/cr-api-data/json/cards.json');
@@ -34,8 +33,10 @@ carregarCartas();
 
 io.on('connection', (socket) => {
 
-    // Jogador entra na sala
     socket.on('entrarJogo', (nome) => {
+        // Evita que o mesmo cara entre duas vezes se bugar o clique
+        if (jogadores.find(j => j.id === socket.id)) return;
+
         if (jogadores.length >= 4) {
             socket.emit('erro', 'A sala já está cheia (4/4).');
             return;
@@ -46,35 +47,42 @@ io.on('connection', (socket) => {
         if (jogadores.length === 4) iniciarPartida();
     });
 
-    // Iniciar a Votação
     socket.on('pedirVotacao', () => {
         io.emit('abrirTelaVotacao', jogadores);
     });
 
-    // Receber um voto
     socket.on('enviarVoto', (idVotado) => {
         votos[socket.id] = idVotado;
 
-        // Se todos os 4 votaram, apura o resultado
-        if (Object.keys(votos).length === 4) {
+        // Se a quantidade de votos for igual ao número de jogadores vivos
+        if (Object.keys(votos).length >= jogadores.length) {
             apurarVotos();
         }
     });
 
-    // Desconexão
     socket.on('disconnect', () => {
+        // Remove o jogador que saiu e avisa os outros
         jogadores = jogadores.filter(j => j.id !== socket.id);
         io.emit('atualizarJogadores', jogadores);
-        votos = {}; // Reseta votos se alguém cair
+
+        // Se o jogo esvaziar, limpa os votos para não travar a próxima sala
+        if (jogadores.length === 0) {
+            votos = {};
+        }
     });
 });
 
 function iniciarPartida() {
+    // Garantia caso as cartas ainda não tenham carregado
+    if (cartasClash.length === 0) {
+        cartasClash = [{ nome: 'Corredor', dica: 'Custa 4 de Elixir. Raridade: Rara.' }];
+    }
+
     const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
     const ordemJogadores = jogadores.sort(() => Math.random() - 0.5);
     const ordemNomes = ordemJogadores.map(j => j.nome);
     indexImpostorGeral = Math.floor(Math.random() * 4);
-    votos = {}; // Reseta os votos para a nova partida
+    votos = {};
 
     ordemJogadores.forEach((jogador, index) => {
         const ehImpostor = (index === indexImpostorGeral);
@@ -91,7 +99,6 @@ function apurarVotos() {
     let maisVotadoId = null;
     let maxVotos = 0;
 
-    // Conta os votos
     for (let eleitor in votos) {
         let escolhido = votos[eleitor];
         contagem[escolhido] = (contagem[escolhido] || 0) + 1;
@@ -102,27 +109,25 @@ function apurarVotos() {
         }
     }
 
-    const impostorReal = jogadores[indexImpostorGeral];
-    const jogadorExpulso = jogadores.find(j => j.id === maisVotadoId);
+    // Trava de segurança: se o impostor desconectou antes de acabar
+    const impostorReal = jogadores[indexImpostorGeral] || { id: 'saiu', nome: 'Jogador Desconectado' };
+    const jogadorExpulso = jogadores.find(j => j.id === maisVotadoId) || { nome: 'Ninguém' };
 
-    // Verifica se empatou (mais de um com o mesmo número máximo de votos)
     let empatou = Object.values(contagem).filter(v => v === maxVotos).length > 1;
 
     let mensagemFinal = "";
     if (empatou) {
-        mensagemFinal = `⚖️ Deu empate na votação! O Impostor (${impostorReal.nome}) escapou ileso!`;
+        mensagemFinal = `⚖️ Deu empate! O Impostor (${impostorReal.nome}) escapou ileso!`;
     } else if (maisVotadoId === impostorReal.id) {
-        mensagemFinal = `🎉 VITÓRIA DOS INOCENTES! Vocês descobriram o Impostor: ${impostorReal.nome}!`;
+        mensagemFinal = `🎉 VITÓRIA! Vocês descobriram o Impostor: ${impostorReal.nome}!`;
     } else {
-        mensagemFinal = `💀 VITÓRIA DO IMPOSTOR! Vocês expulsaram um inocente (${jogadorExpulso.nome}). O verdadeiro impostor era: ${impostorReal.nome}!`;
+        mensagemFinal = `💀 O IMPOSTOR VENCEU! Vocês expulsaram ${jogadorExpulso.nome}. O verdadeiro impostor era: ${impostorReal.nome}!`;
     }
 
     io.emit('resultadoFinal', mensagemFinal);
 
-    // Limpa a sala para a próxima partida
     jogadores = [];
     votos = {};
-    io.emit('reiniciarInterface');
 }
 
 const PORT = process.env.PORT || 3000;

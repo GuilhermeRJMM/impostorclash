@@ -67,6 +67,13 @@
         .voto-btn:hover {
             background: #2980b9;
         }
+
+        #statusConexao {
+            color: #e74c3c;
+            font-weight: bold;
+            display: none;
+            margin-top: 10px;
+        }
     </style>
 </head>
 
@@ -74,29 +81,27 @@
 
     <h1>🕵️ Clash Impostor</h1>
 
-    <div id="loginArea">
+    <h3 id="status" style="color: #3498db;">Aguardando jogadores: 0/4</h3>
+    <p id="statusConexao">⚠️ Você está desconectado do servidor!</p>
+
+    <div id="loginArea" class="card" style="display: block;">
         <input type="text" id="nomeInput" placeholder="Digite seu Nickname">
         <br>
         <button onclick="entrar()">Entrar na Sala</button>
-        <p id="status" style="color: #bdc3c7;">Aguardando jogadores: 0/4</p>
     </div>
 
     <div id="gameArea" class="card">
         <h2 style="margin-top: 0;">Seu Papel:</h2>
         <h3 id="meuPapel" style="color: #f1c40f; font-size: 24px;"></h3>
-
         <hr>
-
         <h3>Ordem de Fala:</h3>
         <ol id="ordemLista" style="text-align: left; display: inline-block; font-size: 18px;"></ol>
-
         <hr>
         <button onclick="solicitarVotacao()">🚨 Iniciar Votação</button>
     </div>
 
     <div id="voteArea" class="card">
         <h2>Em quem você vota?</h2>
-        <p>Escolha quem você acha que é o Impostor:</p>
         <div id="listaBotoesVoto"></div>
         <p id="statusVoto" style="color: #f1c40f; display: none;">Aguardando os outros votarem...</p>
     </div>
@@ -110,13 +115,16 @@
     <script>
         const socket = io();
 
-        // --- FUNÇÕES DA INTERFACE ---
+        // Avisa se a conexão cair
+        socket.on('disconnect', () => {
+            document.getElementById('statusConexao').style.display = 'block';
+        });
+
         function entrar() {
             const nome = document.getElementById('nomeInput').value.trim();
             if (nome) {
                 socket.emit('entrarJogo', nome);
                 document.getElementById('loginArea').style.display = 'none';
-                document.getElementById('status').style.display = 'block';
             } else {
                 alert("Digite um nome!");
             }
@@ -134,13 +142,8 @@
             document.getElementById('statusVoto').style.display = 'block';
         }
 
-        // --- EVENTOS DO SERVIDOR ---
         socket.on('atualizarJogadores', (jogadores) => {
             document.getElementById('status').innerText = `Jogadores na sala: ${jogadores.length}/4`;
-            // Se o loginArea estiver oculto e o jogo não começou, mostra só um aviso
-            if (document.getElementById('loginArea').style.display === 'none' && document.getElementById('gameArea').style.display === 'none') {
-                document.getElementById('status').innerText = `Aguardando mais jogadores (${jogadores.length}/4)...`;
-            }
         });
 
         socket.on('jogoIniciado', (dados) => {
@@ -173,14 +176,11 @@
             divBotoes.innerHTML = '';
 
             jogadores.forEach(j => {
-                // Não deixa votar em si mesmo (opcional, mas recomendado)
-                if (j.id !== socket.id) {
-                    const btn = document.createElement('button');
-                    btn.className = 'voto-btn';
-                    btn.innerText = `Votar em ${j.nome}`;
-                    btn.onclick = () => votar(j.id);
-                    divBotoes.appendChild(btn);
-                }
+                const btn = document.createElement('button');
+                btn.className = 'voto-btn';
+                btn.innerText = `Votar em ${j.nome}`;
+                btn.onclick = () => votar(j.id);
+                divBotoes.appendChild(btn);
             });
         });
 
@@ -188,10 +188,6 @@
             document.getElementById('voteArea').style.display = 'none';
             document.getElementById('resultArea').style.display = 'block';
             document.getElementById('textoResultado').innerText = mensagem;
-        });
-
-        socket.on('reiniciarInterface', () => {
-            // Opcional: a página já recarrega no botão, mas isso limpa o backend
         });
 
         socket.on('erro', (msg) => {
