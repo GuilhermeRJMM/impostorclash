@@ -3,92 +3,159 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clash Impostor</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
-            padding: 50px;
-            background: #2c3e50;
+            padding: 20px;
+            background: #1a252f;
             color: white;
         }
 
         .card {
-            background: #34495e;
+            background: #2c3e50;
             padding: 20px;
             border-radius: 10px;
-            margin-top: 20px;
+            margin: 20px auto;
+            max-width: 500px;
             display: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         button {
-            padding: 10px 20px;
+            padding: 12px 24px;
             font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
             background: #e74c3c;
             border: none;
             color: white;
             border-radius: 5px;
+            margin: 5px;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #c0392b;
         }
 
         input {
-            padding: 10px;
+            padding: 12px;
             font-size: 16px;
+            border-radius: 5px;
+            border: none;
+            margin-bottom: 10px;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        hr {
+            border-color: #34495e;
+            margin: 20px 0;
+        }
+
+        .voto-btn {
+            background: #3498db;
+            display: block;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .voto-btn:hover {
+            background: #2980b9;
         }
     </style>
 </head>
 
 <body>
 
-    <h1>🕵️ Jogo do Impostor: Clash Royale</h1>
+    <h1>🕵️ Clash Impostor</h1>
 
     <div id="loginArea">
-        <input type="text" id="nomeInput" placeholder="Seu Nickname">
+        <input type="text" id="nomeInput" placeholder="Digite seu Nickname">
+        <br>
         <button onclick="entrar()">Entrar na Sala</button>
-        <p id="status">Jogadores na sala: 0/4</p>
+        <p id="status" style="color: #bdc3c7;">Aguardando jogadores: 0/4</p>
     </div>
 
     <div id="gameArea" class="card">
-        <h2>Seu Papel:</h2>
-        <h3 id="meuPapel" style="color: #f1c40f;"></h3>
+        <h2 style="margin-top: 0;">Seu Papel:</h2>
+        <h3 id="meuPapel" style="color: #f1c40f; font-size: 24px;"></h3>
 
         <hr>
 
         <h3>Ordem de Fala:</h3>
-        <ol id="ordemLista" style="text-align: left; display: inline-block;"></ol>
+        <ol id="ordemLista" style="text-align: left; display: inline-block; font-size: 18px;"></ol>
 
-        <br><br>
-        <button onclick="alert('Sistema de votação em breve!')">Iniciar Votação</button>
+        <hr>
+        <button onclick="solicitarVotacao()">🚨 Iniciar Votação</button>
+    </div>
+
+    <div id="voteArea" class="card">
+        <h2>Em quem você vota?</h2>
+        <p>Escolha quem você acha que é o Impostor:</p>
+        <div id="listaBotoesVoto"></div>
+        <p id="statusVoto" style="color: #f1c40f; display: none;">Aguardando os outros votarem...</p>
+    </div>
+
+    <div id="resultArea" class="card">
+        <h2>FIM DE JOGO</h2>
+        <h3 id="textoResultado"></h3>
+        <button onclick="location.reload()">Jogar Novamente</button>
     </div>
 
     <script>
         const socket = io();
 
+        // --- FUNÇÕES DA INTERFACE ---
         function entrar() {
-            const nome = document.getElementById('nomeInput').value;
+            const nome = document.getElementById('nomeInput').value.trim();
             if (nome) {
                 socket.emit('entrarJogo', nome);
                 document.getElementById('loginArea').style.display = 'none';
+                document.getElementById('status').style.display = 'block';
+            } else {
+                alert("Digite um nome!");
             }
         }
 
+        function solicitarVotacao() {
+            if (confirm("Tem certeza que deseja iniciar a votação agora?")) {
+                socket.emit('pedirVotacao');
+            }
+        }
+
+        function votar(idVotado) {
+            socket.emit('enviarVoto', idVotado);
+            document.getElementById('listaBotoesVoto').style.display = 'none';
+            document.getElementById('statusVoto').style.display = 'block';
+        }
+
+        // --- EVENTOS DO SERVIDOR ---
         socket.on('atualizarJogadores', (jogadores) => {
             document.getElementById('status').innerText = `Jogadores na sala: ${jogadores.length}/4`;
+            // Se o loginArea estiver oculto e o jogo não começou, mostra só um aviso
+            if (document.getElementById('loginArea').style.display === 'none' && document.getElementById('gameArea').style.display === 'none') {
+                document.getElementById('status').innerText = `Aguardando mais jogadores (${jogadores.length}/4)...`;
+            }
         });
 
         socket.on('jogoIniciado', (dados) => {
+            document.getElementById('status').style.display = 'none';
             document.getElementById('gameArea').style.display = 'block';
 
-            // Exibe o papel
             const displayPapel = document.getElementById('meuPapel');
             if (dados.papel.tipo === 'Impostor') {
-                displayPapel.innerText = `Você é o IMPOSTOR! \nDica da Carta: ${dados.papel.dica}`;
+                displayPapel.innerText = `IMPOSTOR! 🔪\nDica: ${dados.papel.dica}`;
+                displayPapel.style.color = '#e74c3c';
             } else {
-                displayPapel.innerText = `Carta Secreta: ${dados.papel.carta}`;
+                displayPapel.innerText = `A Carta é:\n${dados.papel.carta}`;
+                displayPapel.style.color = '#3498db';
             }
 
-            // Exibe a ordem de fala
             const lista = document.getElementById('ordemLista');
             lista.innerHTML = '';
             dados.ordemFalas.forEach(nome => {
@@ -96,6 +163,35 @@
                 li.innerText = nome;
                 lista.appendChild(li);
             });
+        });
+
+        socket.on('abrirTelaVotacao', (jogadores) => {
+            document.getElementById('gameArea').style.display = 'none';
+            document.getElementById('voteArea').style.display = 'block';
+
+            const divBotoes = document.getElementById('listaBotoesVoto');
+            divBotoes.innerHTML = '';
+
+            jogadores.forEach(j => {
+                // Não deixa votar em si mesmo (opcional, mas recomendado)
+                if (j.id !== socket.id) {
+                    const btn = document.createElement('button');
+                    btn.className = 'voto-btn';
+                    btn.innerText = `Votar em ${j.nome}`;
+                    btn.onclick = () => votar(j.id);
+                    divBotoes.appendChild(btn);
+                }
+            });
+        });
+
+        socket.on('resultadoFinal', (mensagem) => {
+            document.getElementById('voteArea').style.display = 'none';
+            document.getElementById('resultArea').style.display = 'block';
+            document.getElementById('textoResultado').innerText = mensagem;
+        });
+
+        socket.on('reiniciarInterface', () => {
+            // Opcional: a página já recarrega no botão, mas isso limpa o backend
         });
 
         socket.on('erro', (msg) => {
