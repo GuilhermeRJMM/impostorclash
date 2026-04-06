@@ -8,57 +8,63 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-// Lista de reserva caso a API falhe ou demore
+// 🛡️ BOTE SALVA-VIDAS: Se a internet piscar ou a API mudar de novo, o jogo usa essas!
 let cartasClash = [
     { name: 'Corredor', elixir: 4, rarity: 'Rara', type: 'Tropa' },
     { name: 'Megacavaleiro', elixir: 7, rarity: 'Lendária', type: 'Tropa' },
     { name: 'Tronco', elixir: 2, rarity: 'Lendária', type: 'Feitiço' },
-    { name: 'P.E.K.K.A', elixir: 7, rarity: 'Épica', type: 'Tropa' }
+    { name: 'P.E.K.K.A', elixir: 7, rarity: 'Épica', type: 'Tropa' },
+    { name: 'Princesa', elixir: 3, rarity: 'Lendária', type: 'Tropa' },
+    { name: 'Barril de Goblins', elixir: 3, rarity: 'Épica', type: 'Feitiço' },
+    { name: 'Mosqueteira', elixir: 4, rarity: 'Rara', type: 'Tropa' },
+    { name: 'Golem', elixir: 8, rarity: 'Épica', type: 'Tropa' }
 ];
 
 let jogadores = [];
 let votos = {};
 let jogoEmAndamento = false;
 
-// Busca cartas da API
+// Busca Inteligente
 async function carregarAPI() {
     try {
-        console.log("System: Tentando carregar RoyaleAPI...");
         const response = await fetch('https://royaleapi.github.io/cr-api-data/json/cards.json');
         if (response.ok) {
             const data = await response.json();
-            cartasClash = data;
-            console.log(`System: ${data.length} cartas carregadas com sucesso.`);
+
+            // Corrige o erro antigo: caça o array de cartas em qualquer lugar do JSON
+            let arrayAPI = Array.isArray(data) ? data : (data.items || data.cards || []);
+            let cartasValidas = arrayAPI.filter(c => c.name);
+
+            if (cartasValidas.length > 0) {
+                cartasClash = cartasValidas.map(c => ({
+                    name: c.name,
+                    elixir: c.elixir || c.cost || "?",
+                    rarity: c.rarity || "Desconhecida",
+                    type: c.type || "Tropa"
+                }));
+                console.log(`✅ API 100% carregada: ${cartasClash.length} cartas reais disponíveis.`);
+            }
         }
     } catch (e) {
-        console.log("System: Falha ao carregar API, usando cartas de reserva.");
+        console.log("⚠️ Demora na API. Usando bote salva-vidas (offline).");
     }
 }
 carregarAPI();
 
 io.on('connection', (socket) => {
-    console.log(`User: Novo socket conectado: ${socket.id}`);
-
-    // Envia o estado atual para quem acabou de conectar
     socket.emit('atualizarJogadores', jogadores);
 
     socket.on('entrarJogo', (nome) => {
-        try {
-            if (jogoEmAndamento) return socket.emit('erro', 'Jogo em andamento!');
-            if (jogadores.length >= 4) return socket.emit('erro', 'Sala cheia!');
-            if (jogadores.find(j => j.id === socket.id)) return;
+        if (jogoEmAndamento) return socket.emit('erro', 'O jogo já começou! Espere a rodada.');
+        if (jogadores.length >= 4) return socket.emit('erro', 'A sala já está cheia!');
+        if (jogadores.find(j => j.id === socket.id)) return;
 
-            jogadores.push({ id: socket.id, nome: nome });
-            console.log(`User: ${nome} entrou. Total: ${jogadores.length}/4`);
-            io.emit('atualizarJogadores', jogadores);
+        jogadores.push({ id: socket.id, nome: nome });
+        io.emit('atualizarJogadores', jogadores);
 
-            if (jogadores.length === 4) {
-                jogoEmAndamento = true;
-                // Pequeno delay para garantir que o 4º jogador recebeu o status antes de mudar a tela
-                setTimeout(iniciarPartida, 1000);
-            }
-        } catch (err) {
-            console.error("CRITICAL ERROR no entrarJogo:", err);
+        if (jogadores.length === 4) {
+            jogoEmAndamento = true;
+            iniciarPartida(); // Removi o "setTimeout" que engasgava o servidor
         }
     });
 
@@ -76,27 +82,19 @@ io.on('connection', (socket) => {
             votos = {};
         }
         io.emit('atualizarJogadores', jogadores);
-        console.log(`User: Alguém saiu. Restam: ${jogadores.length}`);
     });
 });
 
 function iniciarPartida() {
     try {
-        console.log("Game: Iniciando partida...");
-
-        // Sorteio Seguro
         const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
         const dicaGerada = `Custo: ${cartaSorteada.elixir} | Raridade: ${cartaSorteada.rarity} | Tipo: ${cartaSorteada.type}`;
 
-        // Embaralha ordem de fala
         const ordemFalas = [...jogadores].sort(() => Math.random() - 0.5);
         const nomesOrdem = ordemFalas.map(j => j.nome);
 
-        // Sorteia Impostor baseado no tamanho atual da lista
         const indexImpostor = Math.floor(Math.random() * jogadores.length);
         const idImpostor = jogadores[indexImpostor].id;
-
-        console.log(`Game: Carta da rodada: ${cartaSorteada.name}. Impostor ID: ${idImpostor}`);
 
         jogadores.forEach((jog) => {
             const ehImpostor = (jog.id === idImpostor);
@@ -106,33 +104,18 @@ function iniciarPartida() {
             });
         });
     } catch (err) {
-        console.error("CRITICAL ERROR no iniciarPartida:", err);
-        io.emit('erro', 'Erro ao iniciar partida. Reiniciando...');
+        console.error("ERRO:", err);
+        io.emit('erro', 'Pequena falha ao sortear. Clique no botão de novo!');
         jogoEmAndamento = false;
-        jogadores = [];
-        io.emit('atualizarJogadores', []);
     }
 }
 
 function apurarVotos() {
-    try {
-        let contagem = {};
-        for (let id in votos) {
-            let v = votos[id];
-            contagem[v] = (contagem[v] || 0) + 1;
-        }
-
-        // Lógica simplificada de resultado
-        io.emit('resultadoFinal', "Votação encerrada! Verifique quem foi o mais votado com o grupo.");
-
-        // Reseta tudo para a próxima
-        jogadores = [];
-        votos = {};
-        jogoEmAndamento = false;
-    } catch (e) {
-        console.error("Erro na apuração:", e);
-    }
+    io.emit('resultadoFinal', "A votação acabou! Discutam o resultado pelo Discord/Call.");
+    jogadores = [];
+    votos = {};
+    jogoEmAndamento = false;
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server: Online na porta ${PORT}`));
+server.listen(PORT, () => console.log(`Server Online: Porta ${PORT}`));

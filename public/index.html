@@ -39,6 +39,11 @@
             cursor: pointer;
             background: #e74c3c;
             color: white;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #c0392b;
         }
 
         input {
@@ -52,10 +57,12 @@
 
         .inocente {
             background: #2980b9 !important;
+            border-radius: 8px;
         }
 
         .impostor {
             background: #c0392b !important;
+            border-radius: 8px;
         }
     </style>
 </head>
@@ -66,43 +73,45 @@
 
     <div id="tela-login" class="tela" style="display: block;">
         <div class="card">
-            <input type="text" id="nomeInput" placeholder="Seu Nome">
+            <input type="text" id="nomeInput" placeholder="Seu Nickname">
             <button onclick="entrar()">ENTRAR NO JOGO</button>
-            <p id="L-status">Conectando...</p>
+            <p id="L-status">Aguardando início...</p>
         </div>
     </div>
 
     <div id="tela-espera" class="tela">
         <div class="card">
             <h2>Aguardando Jogadores</h2>
-            <h1 id="contador">0/4</h1>
-            <p>O jogo começará automaticamente com 4 pessoas.</p>
+            <h1 id="contador" style="color: #3498db; font-size: 40px;">0/4</h1>
+            <p>O jogo começa automaticamente com 4 pessoas.</p>
         </div>
     </div>
 
     <div id="tela-jogo" class="tela">
         <div class="card">
             <h2 id="papel-titulo">SEU PAPEL</h2>
-            <div id="caixa-papel" style="padding: 20px; border-radius: 10px; font-size: 24px; font-weight: bold;"></div>
-            <p id="dica-area" style="margin-top: 15px; color: #f1c40f;"></p>
-            <hr>
+            <div id="caixa-papel" style="padding: 20px; font-size: 24px; font-weight: bold;"></div>
+            <p id="dica-area" style="margin-top: 15px; color: #f1c40f; font-size: 18px;"></p>
+            <hr style="border-color: #34495e;">
             <h3>Ordem de Fala:</h3>
-            <div id="lista-ordem" style="text-align: left; background: rgba(0,0,0,0.2); padding: 10px;"></div>
-            <button onclick="socket.emit('pedirVotacao')">🚨 VOTAR AGORA</button>
+            <div id="lista-ordem"
+                style="text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;"></div>
+            <button onclick="socket.emit('pedirVotacao')" style="margin-top: 20px;">🚨 INICIAR VOTAÇÃO</button>
         </div>
     </div>
 
     <div id="tela-votacao" class="tela">
         <div class="card">
             <h2>VOTAÇÃO</h2>
+            <p>Quem você acha que é o impostor?</p>
             <div id="botoes-voto"></div>
         </div>
     </div>
 
     <div id="tela-fim" class="tela">
         <div class="card">
-            <h2 id="msg-final"></h2>
-            <button onclick="location.reload()">JOGAR NOVAMENTE</button>
+            <h2 id="msg-final" style="line-height: 1.5;"></h2>
+            <button onclick="location.reload()" style="background: #2ecc71;">JOGAR NOVAMENTE</button>
         </div>
     </div>
 
@@ -123,7 +132,7 @@
 
         socket.on('atualizarJogadores', (jogadores) => {
             document.getElementById('contador').innerText = `${jogadores.length}/4`;
-            document.getElementById('L-status').innerText = `Jogadores online: ${jogadores.length}`;
+            document.getElementById('L-status').innerText = `Jogadores online na sala: ${jogadores.length}/4`;
         });
 
         socket.on('jogoIniciado', (data) => {
@@ -132,22 +141,22 @@
             const dicaArea = document.getElementById('dica-area');
 
             if (data.papel.tipo === 'Impostor') {
-                caixa.innerText = "VOCÊ É O IMPOSTOR!";
+                caixa.innerText = "🔪 IMPOSTOR";
                 caixa.className = 'impostor';
-                dicaArea.innerText = "Dica: " + data.papel.dica;
+                dicaArea.innerText = "Dica para fingir: " + data.papel.dica;
             } else {
-                caixa.innerText = "CARTA: " + data.papel.carta;
+                caixa.innerText = "🛡️ CARTA: " + data.papel.carta;
                 caixa.className = 'inocente';
-                dicaArea.innerText = "Você é Inocente. Tente não ser descoberto!";
+                dicaArea.innerText = "Você é Inocente. Descubra o Impostor!";
             }
 
-            document.getElementById('lista-ordem').innerHTML = data.ordemFalas.map((n, i) => `<p>${i + 1}. ${n}</p>`).join('');
+            document.getElementById('lista-ordem').innerHTML = data.ordemFalas.map((n, i) => `<p style="margin: 5px 0;"><strong>${i + 1}.</strong> ${n}</p>`).join('');
         });
 
         socket.on('abrirTelaVotacao', (jogs) => {
             mostrarTela('tela-votacao');
             const area = document.getElementById('botoes-voto');
-            area.innerHTML = jogs.map(j => `<button onclick="socket.emit('enviarVoto','${j.id}'); this.disabled=true; this.innerText='VOTO ENVIADO'">Votar em ${j.nome}</button>`).join('');
+            area.innerHTML = jogs.map(j => `<button style="background: #3498db;" onclick="socket.emit('enviarVoto','${j.id}'); this.disabled=true; this.innerText='✔️ VOTO REGISTRADO'; this.style.background='#7f8c8d';">Votar em ${j.nome}</button>`).join('');
         });
 
         socket.on('resultadoFinal', (msg) => {
@@ -155,8 +164,12 @@
             document.getElementById('msg-final').innerText = msg;
         });
 
-        socket.on('erro', m => { alert(m); location.reload(); });
-        socket.on('disconnect', () => { console.log("Caiu a conexão"); });
+        // O GRANDE CULPADO DO BUG FOI REMOVIDO:
+        socket.on('erro', m => {
+            alert("Aviso: " + m);
+            // Apaguei o location.reload() que forçava todo mundo pro login.
+        });
+
     </script>
 </body>
 
