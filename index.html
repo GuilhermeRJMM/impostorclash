@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Clash Impostor</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background: #2c3e50;
+            color: white;
+        }
+
+        .card {
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #e74c3c;
+            border: none;
+            color: white;
+            border-radius: 5px;
+        }
+
+        input {
+            padding: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🕵️ Jogo do Impostor: Clash Royale</h1>
+
+    <div id="loginArea">
+        <input type="text" id="nomeInput" placeholder="Seu Nickname">
+        <button onclick="entrar()">Entrar na Sala</button>
+        <p id="status">Jogadores na sala: 0/4</p>
+    </div>
+
+    <div id="gameArea" class="card">
+        <h2>Seu Papel:</h2>
+        <h3 id="meuPapel" style="color: #f1c40f;"></h3>
+
+        <hr>
+
+        <h3>Ordem de Fala:</h3>
+        <ol id="ordemLista" style="text-align: left; display: inline-block;"></ol>
+
+        <br><br>
+        <button onclick="alert('Sistema de votação em breve!')">Iniciar Votação</button>
+    </div>
+
+    <script>
+        const socket = io();
+
+        function entrar() {
+            const nome = document.getElementById('nomeInput').value;
+            if (nome) {
+                socket.emit('entrarJogo', nome);
+                document.getElementById('loginArea').style.display = 'none';
+            }
+        }
+
+        socket.on('atualizarJogadores', (jogadores) => {
+            document.getElementById('status').innerText = `Jogadores na sala: ${jogadores.length}/4`;
+        });
+
+        socket.on('jogoIniciado', (dados) => {
+            document.getElementById('gameArea').style.display = 'block';
+
+            // Exibe o papel
+            const displayPapel = document.getElementById('meuPapel');
+            if (dados.papel.tipo === 'Impostor') {
+                displayPapel.innerText = `Você é o IMPOSTOR! \nDica da Carta: ${dados.papel.dica}`;
+            } else {
+                displayPapel.innerText = `Carta Secreta: ${dados.papel.carta}`;
+            }
+
+            // Exibe a ordem de fala
+            const lista = document.getElementById('ordemLista');
+            lista.innerHTML = '';
+            dados.ordemFalas.forEach(nome => {
+                const li = document.createElement('li');
+                li.innerText = nome;
+                lista.appendChild(li);
+            });
+        });
+
+        socket.on('erro', (msg) => {
+            alert(msg);
+            document.getElementById('loginArea').style.display = 'block';
+        });
+    </script>
+</body>
+
+</html>
