@@ -8,133 +8,131 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-let cartasClash = [{ nome: 'Corredor', dica: 'Custa 4 de Elixir. Raridade: Rara. Tipo: Tropa.' }]; // Fallback
+// Lista de reserva caso a API falhe ou demore
+let cartasClash = [
+    { name: 'Corredor', elixir: 4, rarity: 'Rara', type: 'Tropa' },
+    { name: 'Megacavaleiro', elixir: 7, rarity: 'Lendária', type: 'Tropa' },
+    { name: 'Tronco', elixir: 2, rarity: 'Lendária', type: 'Feitiço' },
+    { name: 'P.E.K.K.A', elixir: 7, rarity: 'Épica', type: 'Tropa' }
+];
+
 let jogadores = [];
 let votos = {};
 let jogoEmAndamento = false;
-let indexImpostorGeral = -1;
 
-// Busca as cartas uma única vez ao ligar o servidor
-fetch('https://royaleapi.github.io/cr-api-data/json/cards.json')
-    .then(res => res.json())
-    .then(data => {
-        cartasClash = data.map(c => ({
-            nome: c.name,
-            dica: `Custo: ${c.elixir} Elixir. Raridade: ${c.rarity}. Tipo: ${c.type}.`
-        }));
-        console.log(`✅ API carregada: ${cartasClash.length} cartas prontas!`);
-    })
-    .catch(err => console.error('❌ Falha na API. Usando carta padrão.'));
+// Busca cartas da API
+async function carregarAPI() {
+    try {
+        console.log("System: Tentando carregar RoyaleAPI...");
+        const response = await fetch('https://royaleapi.github.io/cr-api-data/json/cards.json');
+        if (response.ok) {
+            const data = await response.json();
+            cartasClash = data;
+            console.log(`System: ${data.length} cartas carregadas com sucesso.`);
+        }
+    } catch (e) {
+        console.log("System: Falha ao carregar API, usando cartas de reserva.");
+    }
+}
+carregarAPI();
 
 io.on('connection', (socket) => {
-    // Sempre que alguém abre a página, recebe o status atual da sala
+    console.log(`User: Novo socket conectado: ${socket.id}`);
+
+    // Envia o estado atual para quem acabou de conectar
     socket.emit('atualizarJogadores', jogadores);
 
     socket.on('entrarJogo', (nome) => {
-        if (jogoEmAndamento) {
-            socket.emit('erro', 'Uma partida já está acontecendo. Aguarde terminar.');
-            return;
-        }
-        if (jogadores.length >= 4) {
-            socket.emit('erro', 'A sala já está cheia (4/4).');
-            return;
-        }
-        // Evita duplicatas do mesmo jogador
-        if (jogadores.some(j => j.id === socket.id)) return;
+        try {
+            if (jogoEmAndamento) return socket.emit('erro', 'Jogo em andamento!');
+            if (jogadores.length >= 4) return socket.emit('erro', 'Sala cheia!');
+            if (jogadores.find(j => j.id === socket.id)) return;
 
-        jogadores.push({ id: socket.id, nome: nome });
+            jogadores.push({ id: socket.id, nome: nome });
+            console.log(`User: ${nome} entrou. Total: ${jogadores.length}/4`);
+            io.emit('atualizarJogadores', jogadores);
 
-        // Avisa TODOS (inclusive quem já estava na sala) que a contagem mudou
-        io.emit('atualizarJogadores', jogadores);
-
-        // Se bater 4, trava a sala e inicia
-        if (jogadores.length === 4) {
-            jogoEmAndamento = true;
-            iniciarPartida();
+            if (jogadores.length === 4) {
+                jogoEmAndamento = true;
+                // Pequeno delay para garantir que o 4º jogador recebeu o status antes de mudar a tela
+                setTimeout(iniciarPartida, 1000);
+            }
+        } catch (err) {
+            console.error("CRITICAL ERROR no entrarJogo:", err);
         }
     });
 
-    socket.on('pedirVotacao', () => {
-        io.emit('abrirTelaVotacao', jogadores);
-    });
+    socket.on('pedirVotacao', () => io.emit('abrirTelaVotacao', jogadores));
 
     socket.on('enviarVoto', (idVotado) => {
         votos[socket.id] = idVotado;
-        // Se o número de votos for igual ao de jogadores vivos, apura
-        if (Object.keys(votos).length >= jogadores.length) {
-            apurarVotos();
-        }
+        if (Object.keys(votos).length >= jogadores.length) apurarVotos();
     });
 
     socket.on('disconnect', () => {
-        // Remove o jogador imediatamente
         jogadores = jogadores.filter(j => j.id !== socket.id);
-
-        // Se a sala esvaziar, reseta o servidor por completo
         if (jogadores.length === 0) {
             jogoEmAndamento = false;
             votos = {};
         }
-
         io.emit('atualizarJogadores', jogadores);
+        console.log(`User: Alguém saiu. Restam: ${jogadores.length}`);
     });
 });
 
 function iniciarPartida() {
-    const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
-    const ordemJogadores = [...jogadores].sort(() => Math.random() - 0.5);
-    const ordemNomes = ordemJogadores.map(j => j.nome);
-    indexImpostorGeral = Math.floor(Math.random() * 4);
-    votos = {};
+    try {
+        console.log("Game: Iniciando partida...");
 
-    // Manda a carta específica de cada um
-    ordemJogadores.forEach((jogador, index) => {
-        const ehImpostor = (index === indexImpostorGeral);
-        let papel = ehImpostor
-            ? { tipo: 'Impostor', dica: cartaSorteada.dica }
-            : { tipo: 'Inocente', carta: cartaSorteada.nome };
+        // Sorteio Seguro
+        const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
+        const dicaGerada = `Custo: ${cartaSorteada.elixir} | Raridade: ${cartaSorteada.rarity} | Tipo: ${cartaSorteada.type}`;
 
-        io.to(jogador.id).emit('jogoIniciado', { papel, ordemFalas: ordemNomes });
-    });
+        // Embaralha ordem de fala
+        const ordemFalas = [...jogadores].sort(() => Math.random() - 0.5);
+        const nomesOrdem = ordemFalas.map(j => j.nome);
+
+        // Sorteia Impostor baseado no tamanho atual da lista
+        const indexImpostor = Math.floor(Math.random() * jogadores.length);
+        const idImpostor = jogadores[indexImpostor].id;
+
+        console.log(`Game: Carta da rodada: ${cartaSorteada.name}. Impostor ID: ${idImpostor}`);
+
+        jogadores.forEach((jog) => {
+            const ehImpostor = (jog.id === idImpostor);
+            io.to(jog.id).emit('jogoIniciado', {
+                papel: ehImpostor ? { tipo: 'Impostor', dica: dicaGerada } : { tipo: 'Inocente', carta: cartaSorteada.name },
+                ordemFalas: nomesOrdem
+            });
+        });
+    } catch (err) {
+        console.error("CRITICAL ERROR no iniciarPartida:", err);
+        io.emit('erro', 'Erro ao iniciar partida. Reiniciando...');
+        jogoEmAndamento = false;
+        jogadores = [];
+        io.emit('atualizarJogadores', []);
+    }
 }
 
 function apurarVotos() {
-    let contagem = {};
-    let maisVotadoId = null;
-    let maxVotos = 0;
-
-    for (let eleitor in votos) {
-        let escolhido = votos[eleitor];
-        contagem[escolhido] = (contagem[escolhido] || 0) + 1;
-
-        if (contagem[escolhido] > maxVotos) {
-            maxVotos = contagem[escolhido];
-            maisVotadoId = escolhido;
+    try {
+        let contagem = {};
+        for (let id in votos) {
+            let v = votos[id];
+            contagem[v] = (contagem[v] || 0) + 1;
         }
+
+        // Lógica simplificada de resultado
+        io.emit('resultadoFinal', "Votação encerrada! Verifique quem foi o mais votado com o grupo.");
+
+        // Reseta tudo para a próxima
+        jogadores = [];
+        votos = {};
+        jogoEmAndamento = false;
+    } catch (e) {
+        console.error("Erro na apuração:", e);
     }
-
-    const impostorReal = jogadores[indexImpostorGeral] || { id: 'saiu', nome: 'Desconhecido' };
-    const jogadorExpulso = jogadores.find(j => j.id === maisVotadoId) || { nome: 'Ninguém' };
-    let empatou = Object.values(contagem).filter(v => v === maxVotos).length > 1;
-
-    let mensagemFinal = "";
-    if (empatou) {
-        mensagemFinal = `⚖️ EMPATE! Ninguém foi expulso. O Impostor (${impostorReal.nome}) venceu!`;
-    } else if (maisVotadoId === impostorReal.id) {
-        mensagemFinal = `🎉 VITÓRIA! Vocês expulsaram o Impostor: ${impostorReal.nome}!`;
-    } else {
-        mensagemFinal = `💀 ERROU! Vocês expulsaram o inocente ${jogadorExpulso.nome}. O Impostor era: ${impostorReal.nome}!`;
-    }
-
-    // Libera a sala para a próxima partida
-    jogoEmAndamento = false;
-    jogadores = [];
-    votos = {};
-
-    io.emit('resultadoFinal', mensagemFinal);
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Servidor online na porta ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server: Online na porta ${PORT}`));

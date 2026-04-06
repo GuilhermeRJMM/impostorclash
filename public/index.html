@@ -8,206 +8,155 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: sans-serif;
             text-align: center;
-            padding: 20px;
             background: #1a252f;
             color: white;
             margin: 0;
+            padding: 20px;
         }
 
         .card {
             background: #2c3e50;
-            padding: 30px;
+            padding: 20px;
             border-radius: 10px;
+            max-width: 400px;
             margin: 20px auto;
-            max-width: 500px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            background: #e74c3c;
-            border: none;
-            color: white;
-            border-radius: 5px;
-            margin: 5px;
-            transition: 0.3s;
-            width: 100%;
-            max-width: 300px;
-        }
-
-        button:hover {
-            background: #c0392b;
-        }
-
-        input {
-            padding: 12px;
-            font-size: 16px;
-            border-radius: 5px;
-            border: none;
-            margin-bottom: 15px;
-            width: 100%;
-            max-width: 280px;
-            text-align: center;
-        }
-
-        hr {
-            border-color: #34495e;
-            margin: 20px 0;
-        }
-
-        .voto-btn {
-            background: #3498db;
-            margin-bottom: 10px;
-        }
-
-        .voto-btn:hover {
-            background: #2980b9;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
         }
 
         .tela {
             display: none;
         }
 
-        /* Todas as telas começam invisíveis */
+        button {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            background: #e74c3c;
+            color: white;
+        }
+
+        input {
+            width: 90%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: none;
+            text-align: center;
+        }
+
+        .inocente {
+            background: #2980b9 !important;
+        }
+
+        .impostor {
+            background: #c0392b !important;
+        }
     </style>
 </head>
 
 <body>
 
-    <h1>🕵️ Clash Impostor</h1>
+    <h1>🕵️ Jogo do Impostor</h1>
 
-    <div id="tela-login" class="tela card" style="display: block;">
-        <h2>Entrar na Partida</h2>
-        <input type="text" id="nomeInput" placeholder="Digite seu Nickname">
-        <br>
-        <button onclick="entrar()">Conectar</button>
-        <p id="status-login" style="color: #bdc3c7; margin-top: 15px;">Aguardando conexão com servidor...</p>
+    <div id="tela-login" class="tela" style="display: block;">
+        <div class="card">
+            <input type="text" id="nomeInput" placeholder="Seu Nome">
+            <button onclick="entrar()">ENTRAR NO JOGO</button>
+            <p id="L-status">Conectando...</p>
+        </div>
     </div>
 
-    <div id="tela-espera" class="tela card">
-        <h2 style="color: #3498db;">Sala de Espera</h2>
-        <h1 id="contador-jogadores">0/4</h1>
-        <p>Aguardando mais jogadores para iniciar...</p>
+    <div id="tela-espera" class="tela">
+        <div class="card">
+            <h2>Aguardando Jogadores</h2>
+            <h1 id="contador">0/4</h1>
+            <p>O jogo começará automaticamente com 4 pessoas.</p>
+        </div>
     </div>
 
-    <div id="tela-jogo" class="tela card">
-        <h2 style="margin-top: 0; color: #ecf0f1;">Seu Papel:</h2>
-        <h2 id="meuPapel" style="background: #1abc9c; padding: 15px; border-radius: 8px;"></h2>
-        <hr>
-        <h3>Ordem de Fala:</h3>
-        <ol id="ordemLista" style="text-align: left; display: inline-block; font-size: 18px;"></ol>
-        <hr>
-        <button onclick="solicitarVotacao()">🚨 Iniciar Votação</button>
+    <div id="tela-jogo" class="tela">
+        <div class="card">
+            <h2 id="papel-titulo">SEU PAPEL</h2>
+            <div id="caixa-papel" style="padding: 20px; border-radius: 10px; font-size: 24px; font-weight: bold;"></div>
+            <p id="dica-area" style="margin-top: 15px; color: #f1c40f;"></p>
+            <hr>
+            <h3>Ordem de Fala:</h3>
+            <div id="lista-ordem" style="text-align: left; background: rgba(0,0,0,0.2); padding: 10px;"></div>
+            <button onclick="socket.emit('pedirVotacao')">🚨 VOTAR AGORA</button>
+        </div>
     </div>
 
-    <div id="tela-votacao" class="tela card">
-        <h2>Quem é o Impostor?</h2>
-        <p>Clique no jogador que você quer expulsar:</p>
-        <div id="listaBotoesVoto"></div>
-        <p id="statusVoto" style="color: #f1c40f; display: none;">Voto registrado! Aguardando os outros...</p>
+    <div id="tela-votacao" class="tela">
+        <div class="card">
+            <h2>VOTAÇÃO</h2>
+            <div id="botoes-voto"></div>
+        </div>
     </div>
 
-    <div id="tela-resultado" class="tela card">
-        <h2>FIM DE JOGO</h2>
-        <h3 id="textoResultado" style="line-height: 1.5;"></h3>
-        <button onclick="location.reload()" style="background: #2ecc71;">Voltar ao Início</button>
+    <div id="tela-fim" class="tela">
+        <div class="card">
+            <h2 id="msg-final"></h2>
+            <button onclick="location.reload()">JOGAR NOVAMENTE</button>
+        </div>
     </div>
 
     <script>
         const socket = io();
 
-        // Gerenciador mestre de telas (Impede bugs visuais)
-        function mostrarTela(idTelaAtiva) {
-            const telas = ['tela-login', 'tela-espera', 'tela-jogo', 'tela-votacao', 'tela-resultado'];
-            telas.forEach(tela => {
-                document.getElementById(tela).style.display = (tela === idTelaAtiva) ? 'block' : 'none';
-            });
+        function mostrarTela(id) {
+            document.querySelectorAll('.tela').forEach(t => t.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
         }
 
-        // --- AÇÕES DO USUÁRIO ---
         function entrar() {
-            const nome = document.getElementById('nomeInput').value.trim();
-            if (!nome) return alert("Por favor, digite um nome válido!");
-            socket.emit('entrarJogo', nome);
-            mostrarTela('tela-espera'); // Vai pra tela de espera imediatamente
+            const n = document.getElementById('nomeInput').value;
+            if (!n) return alert("Digite seu nome!");
+            socket.emit('entrarJogo', n);
+            mostrarTela('tela-espera');
         }
 
-        function solicitarVotacao() {
-            if (confirm("Deseja interromper a discussão e iniciar a votação?")) {
-                socket.emit('pedirVotacao');
-            }
-        }
-
-        function votar(idVotado) {
-            socket.emit('enviarVoto', idVotado);
-            document.getElementById('listaBotoesVoto').style.display = 'none';
-            document.getElementById('statusVoto').style.display = 'block';
-        }
-
-        // --- RESPOSTAS DO SERVIDOR ---
         socket.on('atualizarJogadores', (jogadores) => {
-            document.getElementById('contador-jogadores').innerText = `${jogadores.length}/4`;
-            document.getElementById('status-login').innerText = `Status: ${jogadores.length}/4 na sala.`;
+            document.getElementById('contador').innerText = `${jogadores.length}/4`;
+            document.getElementById('L-status').innerText = `Jogadores online: ${jogadores.length}`;
         });
 
-        socket.on('jogoIniciado', (dados) => {
+        socket.on('jogoIniciado', (data) => {
             mostrarTela('tela-jogo');
+            const caixa = document.getElementById('caixa-papel');
+            const dicaArea = document.getElementById('dica-area');
 
-            const displayPapel = document.getElementById('meuPapel');
-            if (dados.papel.tipo === 'Impostor') {
-                displayPapel.innerText = `IMPOSTOR 🔪\n\nDica: ${dados.papel.dica}`;
-                displayPapel.style.background = '#c0392b';
+            if (data.papel.tipo === 'Impostor') {
+                caixa.innerText = "VOCÊ É O IMPOSTOR!";
+                caixa.className = 'impostor';
+                dicaArea.innerText = "Dica: " + data.papel.dica;
             } else {
-                displayPapel.innerText = `INOCENTE 🛡️\n\nCarta: ${dados.papel.carta}`;
-                displayPapel.style.background = '#2980b9';
+                caixa.innerText = "CARTA: " + data.papel.carta;
+                caixa.className = 'inocente';
+                dicaArea.innerText = "Você é Inocente. Tente não ser descoberto!";
             }
 
-            const lista = document.getElementById('ordemLista');
-            lista.innerHTML = '';
-            dados.ordemFalas.forEach(nome => {
-                const li = document.createElement('li');
-                li.innerText = nome;
-                lista.appendChild(li);
-            });
+            document.getElementById('lista-ordem').innerHTML = data.ordemFalas.map((n, i) => `<p>${i + 1}. ${n}</p>`).join('');
         });
 
-        socket.on('abrirTelaVotacao', (jogadores) => {
+        socket.on('abrirTelaVotacao', (jogs) => {
             mostrarTela('tela-votacao');
-            document.getElementById('statusVoto').style.display = 'none'; // Reseta o aviso de voto
-            document.getElementById('listaBotoesVoto').style.display = 'block';
-
-            const divBotoes = document.getElementById('listaBotoesVoto');
-            divBotoes.innerHTML = '';
-
-            jogadores.forEach(j => {
-                const btn = document.createElement('button');
-                btn.className = 'voto-btn';
-                btn.innerText = `Votar em ${j.nome}`;
-                btn.onclick = () => votar(j.id);
-                divBotoes.appendChild(btn);
-            });
+            const area = document.getElementById('botoes-voto');
+            area.innerHTML = jogs.map(j => `<button onclick="socket.emit('enviarVoto','${j.id}'); this.disabled=true; this.innerText='VOTO ENVIADO'">Votar em ${j.nome}</button>`).join('');
         });
 
-        socket.on('resultadoFinal', (mensagem) => {
-            mostrarTela('tela-resultado');
-            document.getElementById('textoResultado').innerText = mensagem;
+        socket.on('resultadoFinal', (msg) => {
+            mostrarTela('tela-fim');
+            document.getElementById('msg-final').innerText = msg;
         });
 
-        socket.on('erro', (msg) => {
-            alert(msg);
-            mostrarTela('tela-login'); // Se der erro, volta pro inicio
-        });
-
-        // Tratamento de desconexão (Internet caiu)
-        socket.on('disconnect', () => {
-            alert("A conexão com o servidor caiu. A página será atualizada.");
-            location.reload();
-        });
+        socket.on('erro', m => { alert(m); location.reload(); });
+        socket.on('disconnect', () => { console.log("Caiu a conexão"); });
     </script>
 </body>
 
