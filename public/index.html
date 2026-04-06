@@ -39,11 +39,6 @@
             cursor: pointer;
             background: #e74c3c;
             color: white;
-            transition: 0.3s;
-        }
-
-        button:hover {
-            background: #c0392b;
         }
 
         input {
@@ -92,18 +87,17 @@
             <h2 id="papel-titulo">SEU PAPEL</h2>
             <div id="caixa-papel" style="padding: 20px; font-size: 24px; font-weight: bold;"></div>
             <p id="dica-area" style="margin-top: 15px; color: #f1c40f; font-size: 18px;"></p>
-            <hr style="border-color: #34495e;">
+            <hr>
             <h3>Ordem de Fala:</h3>
             <div id="lista-ordem"
                 style="text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;"></div>
-            <button onclick="socket.emit('pedirVotacao')" style="margin-top: 20px;">🚨 INICIAR VOTAÇÃO</button>
+            <button onclick="socket.emit('pedirVotacao')">🚨 INICIAR VOTAÇÃO</button>
         </div>
     </div>
 
     <div id="tela-votacao" class="tela">
         <div class="card">
             <h2>VOTAÇÃO</h2>
-            <p>Quem você acha que é o impostor?</p>
             <div id="botoes-voto"></div>
         </div>
     </div>
@@ -132,7 +126,7 @@
 
         socket.on('atualizarJogadores', (jogadores) => {
             document.getElementById('contador').innerText = `${jogadores.length}/4`;
-            document.getElementById('L-status').innerText = `Jogadores online na sala: ${jogadores.length}/4`;
+            document.getElementById('L-status').innerText = `Jogadores online: ${jogadores.length}/4`;
         });
 
         socket.on('jogoIniciado', (data) => {
@@ -143,20 +137,20 @@
             if (data.papel.tipo === 'Impostor') {
                 caixa.innerText = "🔪 IMPOSTOR";
                 caixa.className = 'impostor';
-                dicaArea.innerText = "Dica para fingir: " + data.papel.dica;
+                dicaArea.innerText = "Dica: " + data.papel.dica;
             } else {
                 caixa.innerText = "🛡️ CARTA: " + data.papel.carta;
                 caixa.className = 'inocente';
                 dicaArea.innerText = "Você é Inocente. Descubra o Impostor!";
             }
 
-            document.getElementById('lista-ordem').innerHTML = data.ordemFalas.map((n, i) => `<p style="margin: 5px 0;"><strong>${i + 1}.</strong> ${n}</p>`).join('');
+            document.getElementById('lista-ordem').innerHTML = data.ordemFalas.map((n, i) => `<p><strong>${i + 1}.</strong> ${n}</p>`).join('');
         });
 
         socket.on('abrirTelaVotacao', (jogs) => {
             mostrarTela('tela-votacao');
             const area = document.getElementById('botoes-voto');
-            area.innerHTML = jogs.map(j => `<button style="background: #3498db;" onclick="socket.emit('enviarVoto','${j.id}'); this.disabled=true; this.innerText='✔️ VOTO REGISTRADO'; this.style.background='#7f8c8d';">Votar em ${j.nome}</button>`).join('');
+            area.innerHTML = jogs.map(j => `<button style="background: #3498db;" onclick="socket.emit('enviarVoto','${j.id}'); this.disabled=true; this.innerText='✔️ VOTO REGISTRADO';">Votar em ${j.nome}</button>`).join('');
         });
 
         socket.on('resultadoFinal', (msg) => {
@@ -164,12 +158,7 @@
             document.getElementById('msg-final').innerText = msg;
         });
 
-        // O GRANDE CULPADO DO BUG FOI REMOVIDO:
-        socket.on('erro', m => {
-            alert("Aviso: " + m);
-            // Apaguei o location.reload() que forçava todo mundo pro login.
-        });
-
+        socket.on('erro', m => alert(m));
     </script>
 </body>
 

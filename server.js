@@ -8,30 +8,22 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-// 🛡️ BOTE SALVA-VIDAS: Se a internet piscar ou a API mudar de novo, o jogo usa essas!
 let cartasClash = [
     { name: 'Corredor', elixir: 4, rarity: 'Rara', type: 'Tropa' },
     { name: 'Megacavaleiro', elixir: 7, rarity: 'Lendária', type: 'Tropa' },
     { name: 'Tronco', elixir: 2, rarity: 'Lendária', type: 'Feitiço' },
-    { name: 'P.E.K.K.A', elixir: 7, rarity: 'Épica', type: 'Tropa' },
-    { name: 'Princesa', elixir: 3, rarity: 'Lendária', type: 'Tropa' },
-    { name: 'Barril de Goblins', elixir: 3, rarity: 'Épica', type: 'Feitiço' },
-    { name: 'Mosqueteira', elixir: 4, rarity: 'Rara', type: 'Tropa' },
-    { name: 'Golem', elixir: 8, rarity: 'Épica', type: 'Tropa' }
+    { name: 'P.E.K.K.A', elixir: 7, rarity: 'Épica', type: 'Tropa' }
 ];
 
 let jogadores = [];
 let votos = {};
 let jogoEmAndamento = false;
 
-// Busca Inteligente
 async function carregarAPI() {
     try {
         const response = await fetch('https://royaleapi.github.io/cr-api-data/json/cards.json');
         if (response.ok) {
             const data = await response.json();
-
-            // Corrige o erro antigo: caça o array de cartas em qualquer lugar do JSON
             let arrayAPI = Array.isArray(data) ? data : (data.items || data.cards || []);
             let cartasValidas = arrayAPI.filter(c => c.name);
 
@@ -42,11 +34,11 @@ async function carregarAPI() {
                     rarity: c.rarity || "Desconhecida",
                     type: c.type || "Tropa"
                 }));
-                console.log(`✅ API 100% carregada: ${cartasClash.length} cartas reais disponíveis.`);
+                console.log(`✅ API carregada: ${cartasClash.length} cartas reais.`);
             }
         }
     } catch (e) {
-        console.log("⚠️ Demora na API. Usando bote salva-vidas (offline).");
+        console.log("⚠️ Falha na API. Usando cartas offline.");
     }
 }
 carregarAPI();
@@ -55,16 +47,17 @@ io.on('connection', (socket) => {
     socket.emit('atualizarJogadores', jogadores);
 
     socket.on('entrarJogo', (nome) => {
-        if (jogoEmAndamento) return socket.emit('erro', 'O jogo já começou! Espere a rodada.');
-        if (jogadores.length >= 4) return socket.emit('erro', 'A sala já está cheia!');
+        if (jogoEmAndamento) return socket.emit('erro', 'O jogo já começou!');
+        if (jogadores.length >= 4) return socket.emit('erro', 'Sala cheia!');
         if (jogadores.find(j => j.id === socket.id)) return;
 
         jogadores.push({ id: socket.id, nome: nome });
+        console.log(`User: ${nome} entrou. Total: ${jogadores.length}/4`);
         io.emit('atualizarJogadores', jogadores);
 
         if (jogadores.length === 4) {
             jogoEmAndamento = true;
-            iniciarPartida(); // Removi o "setTimeout" que engasgava o servidor
+            iniciarPartida(); // Direto, sem Timer!
         }
     });
 
@@ -77,6 +70,7 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         jogadores = jogadores.filter(j => j.id !== socket.id);
+        console.log(`User: Alguém saiu. Restam: ${jogadores.length}/4`);
         if (jogadores.length === 0) {
             jogoEmAndamento = false;
             votos = {};
@@ -87,6 +81,13 @@ io.on('connection', (socket) => {
 
 function iniciarPartida() {
     try {
+        // 🛡️ TRAVA ANTI-CRASH: Impede o erro da sua imagem!
+        if (jogadores.length === 0) {
+            console.log("⚠️ Partida abortada: A sala esvaziou de repente.");
+            jogoEmAndamento = false;
+            return;
+        }
+
         const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
         const dicaGerada = `Custo: ${cartaSorteada.elixir} | Raridade: ${cartaSorteada.rarity} | Tipo: ${cartaSorteada.type}`;
 
@@ -96,6 +97,8 @@ function iniciarPartida() {
         const indexImpostor = Math.floor(Math.random() * jogadores.length);
         const idImpostor = jogadores[indexImpostor].id;
 
+        console.log(`Game: Sorteio concluído. Iniciando para ${jogadores.length} jogadores.`);
+
         jogadores.forEach((jog) => {
             const ehImpostor = (jog.id === idImpostor);
             io.to(jog.id).emit('jogoIniciado', {
@@ -104,14 +107,14 @@ function iniciarPartida() {
             });
         });
     } catch (err) {
-        console.error("ERRO:", err);
-        io.emit('erro', 'Pequena falha ao sortear. Clique no botão de novo!');
+        console.error("ERRO CRÍTICO no sorteio:", err);
+        io.emit('erro', 'Falha no servidor. Atualize a página.');
         jogoEmAndamento = false;
     }
 }
 
 function apurarVotos() {
-    io.emit('resultadoFinal', "A votação acabou! Discutam o resultado pelo Discord/Call.");
+    io.emit('resultadoFinal', "Votação encerrada! Discutam o resultado.");
     jogadores = [];
     votos = {};
     jogoEmAndamento = false;
