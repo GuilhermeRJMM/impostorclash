@@ -13,16 +13,16 @@
             padding: 20px;
             background: #1a252f;
             color: white;
+            margin: 0;
         }
 
         .card {
             background: #2c3e50;
-            padding: 20px;
+            padding: 30px;
             border-radius: 10px;
             margin: 20px auto;
             max-width: 500px;
-            display: none;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
 
         button {
@@ -36,6 +36,8 @@
             border-radius: 5px;
             margin: 5px;
             transition: 0.3s;
+            width: 100%;
+            max-width: 300px;
         }
 
         button:hover {
@@ -47,9 +49,10 @@
             font-size: 16px;
             border-radius: 5px;
             border: none;
-            margin-bottom: 10px;
-            width: 80%;
-            max-width: 300px;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 280px;
+            text-align: center;
         }
 
         hr {
@@ -59,21 +62,18 @@
 
         .voto-btn {
             background: #3498db;
-            display: block;
-            width: 100%;
-            margin: 10px 0;
+            margin-bottom: 10px;
         }
 
         .voto-btn:hover {
             background: #2980b9;
         }
 
-        #statusConexao {
-            color: #e74c3c;
-            font-weight: bold;
+        .tela {
             display: none;
-            margin-top: 10px;
         }
+
+        /* Todas as telas começam invisíveis */
     </style>
 </head>
 
@@ -81,18 +81,23 @@
 
     <h1>🕵️ Clash Impostor</h1>
 
-    <h3 id="status" style="color: #3498db;">Aguardando jogadores: 0/4</h3>
-    <p id="statusConexao">⚠️ Você está desconectado do servidor!</p>
-
-    <div id="loginArea" class="card" style="display: block;">
+    <div id="tela-login" class="tela card" style="display: block;">
+        <h2>Entrar na Partida</h2>
         <input type="text" id="nomeInput" placeholder="Digite seu Nickname">
         <br>
-        <button onclick="entrar()">Entrar na Sala</button>
+        <button onclick="entrar()">Conectar</button>
+        <p id="status-login" style="color: #bdc3c7; margin-top: 15px;">Aguardando conexão com servidor...</p>
     </div>
 
-    <div id="gameArea" class="card">
-        <h2 style="margin-top: 0;">Seu Papel:</h2>
-        <h3 id="meuPapel" style="color: #f1c40f; font-size: 24px;"></h3>
+    <div id="tela-espera" class="tela card">
+        <h2 style="color: #3498db;">Sala de Espera</h2>
+        <h1 id="contador-jogadores">0/4</h1>
+        <p>Aguardando mais jogadores para iniciar...</p>
+    </div>
+
+    <div id="tela-jogo" class="tela card">
+        <h2 style="margin-top: 0; color: #ecf0f1;">Seu Papel:</h2>
+        <h2 id="meuPapel" style="background: #1abc9c; padding: 15px; border-radius: 8px;"></h2>
         <hr>
         <h3>Ordem de Fala:</h3>
         <ol id="ordemLista" style="text-align: left; display: inline-block; font-size: 18px;"></ol>
@@ -100,38 +105,40 @@
         <button onclick="solicitarVotacao()">🚨 Iniciar Votação</button>
     </div>
 
-    <div id="voteArea" class="card">
-        <h2>Em quem você vota?</h2>
+    <div id="tela-votacao" class="tela card">
+        <h2>Quem é o Impostor?</h2>
+        <p>Clique no jogador que você quer expulsar:</p>
         <div id="listaBotoesVoto"></div>
-        <p id="statusVoto" style="color: #f1c40f; display: none;">Aguardando os outros votarem...</p>
+        <p id="statusVoto" style="color: #f1c40f; display: none;">Voto registrado! Aguardando os outros...</p>
     </div>
 
-    <div id="resultArea" class="card">
+    <div id="tela-resultado" class="tela card">
         <h2>FIM DE JOGO</h2>
-        <h3 id="textoResultado"></h3>
-        <button onclick="location.reload()">Jogar Novamente</button>
+        <h3 id="textoResultado" style="line-height: 1.5;"></h3>
+        <button onclick="location.reload()" style="background: #2ecc71;">Voltar ao Início</button>
     </div>
 
     <script>
         const socket = io();
 
-        // Avisa se a conexão cair
-        socket.on('disconnect', () => {
-            document.getElementById('statusConexao').style.display = 'block';
-        });
+        // Gerenciador mestre de telas (Impede bugs visuais)
+        function mostrarTela(idTelaAtiva) {
+            const telas = ['tela-login', 'tela-espera', 'tela-jogo', 'tela-votacao', 'tela-resultado'];
+            telas.forEach(tela => {
+                document.getElementById(tela).style.display = (tela === idTelaAtiva) ? 'block' : 'none';
+            });
+        }
 
+        // --- AÇÕES DO USUÁRIO ---
         function entrar() {
             const nome = document.getElementById('nomeInput').value.trim();
-            if (nome) {
-                socket.emit('entrarJogo', nome);
-                document.getElementById('loginArea').style.display = 'none';
-            } else {
-                alert("Digite um nome!");
-            }
+            if (!nome) return alert("Por favor, digite um nome válido!");
+            socket.emit('entrarJogo', nome);
+            mostrarTela('tela-espera'); // Vai pra tela de espera imediatamente
         }
 
         function solicitarVotacao() {
-            if (confirm("Tem certeza que deseja iniciar a votação agora?")) {
+            if (confirm("Deseja interromper a discussão e iniciar a votação?")) {
                 socket.emit('pedirVotacao');
             }
         }
@@ -142,21 +149,22 @@
             document.getElementById('statusVoto').style.display = 'block';
         }
 
+        // --- RESPOSTAS DO SERVIDOR ---
         socket.on('atualizarJogadores', (jogadores) => {
-            document.getElementById('status').innerText = `Jogadores na sala: ${jogadores.length}/4`;
+            document.getElementById('contador-jogadores').innerText = `${jogadores.length}/4`;
+            document.getElementById('status-login').innerText = `Status: ${jogadores.length}/4 na sala.`;
         });
 
         socket.on('jogoIniciado', (dados) => {
-            document.getElementById('status').style.display = 'none';
-            document.getElementById('gameArea').style.display = 'block';
+            mostrarTela('tela-jogo');
 
             const displayPapel = document.getElementById('meuPapel');
             if (dados.papel.tipo === 'Impostor') {
-                displayPapel.innerText = `IMPOSTOR! 🔪\nDica: ${dados.papel.dica}`;
-                displayPapel.style.color = '#e74c3c';
+                displayPapel.innerText = `IMPOSTOR 🔪\n\nDica: ${dados.papel.dica}`;
+                displayPapel.style.background = '#c0392b';
             } else {
-                displayPapel.innerText = `A Carta é:\n${dados.papel.carta}`;
-                displayPapel.style.color = '#3498db';
+                displayPapel.innerText = `INOCENTE 🛡️\n\nCarta: ${dados.papel.carta}`;
+                displayPapel.style.background = '#2980b9';
             }
 
             const lista = document.getElementById('ordemLista');
@@ -169,8 +177,9 @@
         });
 
         socket.on('abrirTelaVotacao', (jogadores) => {
-            document.getElementById('gameArea').style.display = 'none';
-            document.getElementById('voteArea').style.display = 'block';
+            mostrarTela('tela-votacao');
+            document.getElementById('statusVoto').style.display = 'none'; // Reseta o aviso de voto
+            document.getElementById('listaBotoesVoto').style.display = 'block';
 
             const divBotoes = document.getElementById('listaBotoesVoto');
             divBotoes.innerHTML = '';
@@ -185,14 +194,19 @@
         });
 
         socket.on('resultadoFinal', (mensagem) => {
-            document.getElementById('voteArea').style.display = 'none';
-            document.getElementById('resultArea').style.display = 'block';
+            mostrarTela('tela-resultado');
             document.getElementById('textoResultado').innerText = mensagem;
         });
 
         socket.on('erro', (msg) => {
             alert(msg);
-            document.getElementById('loginArea').style.display = 'block';
+            mostrarTela('tela-login'); // Se der erro, volta pro inicio
+        });
+
+        // Tratamento de desconexão (Internet caiu)
+        socket.on('disconnect', () => {
+            alert("A conexão com o servidor caiu. A página será atualizada.");
+            location.reload();
         });
     </script>
 </body>

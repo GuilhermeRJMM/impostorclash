@@ -4,47 +4,54 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-// Adicionando CORS para garantir que ninguém seja bloqueado pela rede
 const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-let cartasClash = [];
+let cartasClash = [{ nome: 'Corredor', dica: 'Custa 4 de Elixir. Raridade: Rara. Tipo: Tropa.' }]; // Fallback
 let jogadores = [];
-let indexImpostorGeral = -1;
 let votos = {};
+let jogoEmAndamento = false;
+let indexImpostorGeral = -1;
 
-async function carregarCartas() {
-    try {
-        const response = await fetch('https://royaleapi.github.io/cr-api-data/json/cards.json');
-        const data = await response.json();
-
-        cartasClash = data.map(carta => ({
-            nome: carta.name,
-            dica: `Custa ${carta.elixir} de Elixir. Raridade: ${carta.rarity}. Tipo: ${carta.type}.`
+// Busca as cartas uma única vez ao ligar o servidor
+fetch('https://royaleapi.github.io/cr-api-data/json/cards.json')
+    .then(res => res.json())
+    .then(data => {
+        cartasClash = data.map(c => ({
+            nome: c.name,
+            dica: `Custo: ${c.elixir} Elixir. Raridade: ${c.rarity}. Tipo: ${c.type}.`
         }));
-        console.log(`✅ ${cartasClash.length} cartas carregadas!`);
-    } catch (erro) {
-        console.error('❌ Erro na API:', erro);
-        cartasClash = [{ nome: 'Corredor', dica: 'Custa 4 de Elixir. Raridade: Rara.' }];
-    }
-}
-carregarCartas();
+        console.log(`✅ API carregada: ${cartasClash.length} cartas prontas!`);
+    })
+    .catch(err => console.error('❌ Falha na API. Usando carta padrão.'));
 
 io.on('connection', (socket) => {
+    // Sempre que alguém abre a página, recebe o status atual da sala
+    socket.emit('atualizarJogadores', jogadores);
 
     socket.on('entrarJogo', (nome) => {
-        // Evita que o mesmo cara entre duas vezes se bugar o clique
-        if (jogadores.find(j => j.id === socket.id)) return;
-
+        if (jogoEmAndamento) {
+            socket.emit('erro', 'Uma partida já está acontecendo. Aguarde terminar.');
+            return;
+        }
         if (jogadores.length >= 4) {
             socket.emit('erro', 'A sala já está cheia (4/4).');
             return;
         }
+        // Evita duplicatas do mesmo jogador
+        if (jogadores.some(j => j.id === socket.id)) return;
+
         jogadores.push({ id: socket.id, nome: nome });
+
+        // Avisa TODOS (inclusive quem já estava na sala) que a contagem mudou
         io.emit('atualizarJogadores', jogadores);
 
-        if (jogadores.length === 4) iniciarPartida();
+        // Se bater 4, trava a sala e inicia
+        if (jogadores.length === 4) {
+            jogoEmAndamento = true;
+            iniciarPartida();
+        }
     });
 
     socket.on('pedirVotacao', () => {
@@ -53,37 +60,34 @@ io.on('connection', (socket) => {
 
     socket.on('enviarVoto', (idVotado) => {
         votos[socket.id] = idVotado;
-
-        // Se a quantidade de votos for igual ao número de jogadores vivos
+        // Se o número de votos for igual ao de jogadores vivos, apura
         if (Object.keys(votos).length >= jogadores.length) {
             apurarVotos();
         }
     });
 
     socket.on('disconnect', () => {
-        // Remove o jogador que saiu e avisa os outros
+        // Remove o jogador imediatamente
         jogadores = jogadores.filter(j => j.id !== socket.id);
-        io.emit('atualizarJogadores', jogadores);
 
-        // Se o jogo esvaziar, limpa os votos para não travar a próxima sala
+        // Se a sala esvaziar, reseta o servidor por completo
         if (jogadores.length === 0) {
+            jogoEmAndamento = false;
             votos = {};
         }
+
+        io.emit('atualizarJogadores', jogadores);
     });
 });
 
 function iniciarPartida() {
-    // Garantia caso as cartas ainda não tenham carregado
-    if (cartasClash.length === 0) {
-        cartasClash = [{ nome: 'Corredor', dica: 'Custa 4 de Elixir. Raridade: Rara.' }];
-    }
-
     const cartaSorteada = cartasClash[Math.floor(Math.random() * cartasClash.length)];
-    const ordemJogadores = jogadores.sort(() => Math.random() - 0.5);
+    const ordemJogadores = [...jogadores].sort(() => Math.random() - 0.5);
     const ordemNomes = ordemJogadores.map(j => j.nome);
     indexImpostorGeral = Math.floor(Math.random() * 4);
     votos = {};
 
+    // Manda a carta específica de cada um
     ordemJogadores.forEach((jogador, index) => {
         const ehImpostor = (index === indexImpostorGeral);
         let papel = ehImpostor
@@ -109,28 +113,28 @@ function apurarVotos() {
         }
     }
 
-    // Trava de segurança: se o impostor desconectou antes de acabar
-    const impostorReal = jogadores[indexImpostorGeral] || { id: 'saiu', nome: 'Jogador Desconectado' };
+    const impostorReal = jogadores[indexImpostorGeral] || { id: 'saiu', nome: 'Desconhecido' };
     const jogadorExpulso = jogadores.find(j => j.id === maisVotadoId) || { nome: 'Ninguém' };
-
     let empatou = Object.values(contagem).filter(v => v === maxVotos).length > 1;
 
     let mensagemFinal = "";
     if (empatou) {
-        mensagemFinal = `⚖️ Deu empate! O Impostor (${impostorReal.nome}) escapou ileso!`;
+        mensagemFinal = `⚖️ EMPATE! Ninguém foi expulso. O Impostor (${impostorReal.nome}) venceu!`;
     } else if (maisVotadoId === impostorReal.id) {
-        mensagemFinal = `🎉 VITÓRIA! Vocês descobriram o Impostor: ${impostorReal.nome}!`;
+        mensagemFinal = `🎉 VITÓRIA! Vocês expulsaram o Impostor: ${impostorReal.nome}!`;
     } else {
-        mensagemFinal = `💀 O IMPOSTOR VENCEU! Vocês expulsaram ${jogadorExpulso.nome}. O verdadeiro impostor era: ${impostorReal.nome}!`;
+        mensagemFinal = `💀 ERROU! Vocês expulsaram o inocente ${jogadorExpulso.nome}. O Impostor era: ${impostorReal.nome}!`;
     }
 
-    io.emit('resultadoFinal', mensagemFinal);
-
+    // Libera a sala para a próxima partida
+    jogoEmAndamento = false;
     jogadores = [];
     votos = {};
+
+    io.emit('resultadoFinal', mensagemFinal);
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor online na porta ${PORT}`);
 });
